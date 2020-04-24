@@ -5,7 +5,8 @@
 Split a text file into smaller ones using Python's default CSV library,
 repeating the file header throughout all output files written.
 
-usage: split_file.py [-h] [-o OUTPUT] [--lines LINES] [--no-header] input
+usage: split_file.py [-h] [-o OUTPUT] [--delimiter DELIMITER]
+                     [--lines LINES] [no-header] input
 
 positional arguments:
   input                 input file name
@@ -14,8 +15,11 @@ optional arguments:
   -h, --help            show this help message and exit
   -o OUTPUT, --output OUTPUT
                         output folder name
+  --delimiter DELIMITER
+                        column field delimiter
   --lines LINES         number of lines to split (default: 1000)
   --no-header           do not consider first line as header
+
 '''
 
 from argparse import ArgumentParser
@@ -23,12 +27,21 @@ from csv import reader, writer
 from os import mkdir
 from os.path import basename, exists, splitext
 
+import json
+
 def split_file(input_name, output_folder=None,
-    number_of_lines=1000, header=True):
+    delimiter=None, number_of_lines=1000, header=True):
     '''
     Perform input file splitting.
     '''
     name, ext = splitext(basename(input_name))
+
+    if ext == '.json':
+        header = False
+        delimiter = '\n'
+
+    elif not delimiter:
+        delimiter = get_file_delimiter(input_name)
 
     if not output_folder:
         output_folder = 'SPLIT_' + name
@@ -47,7 +60,7 @@ def split_file(input_name, output_folder=None,
     print('Splitting...')
 
     with open(input_name, 'rt', encoding='utf8', errors='ignore') as input_file:
-        file_reader = reader(input_file)
+        file_reader = reader(input_file, delimiter=delimiter)
         file_header = next(file_reader) if header else None
 
         while True:
@@ -64,7 +77,14 @@ def split_file(input_name, output_folder=None,
                 while True:
 
                     try: # write next line until finished
-                        file_writer.writerow(next(file_reader))
+                        line = next(file_reader)
+
+                        if ext == '.json':
+                            json.dump(json.loads(line[0]), output_file)
+                            output_file.write('\n')
+                        else:
+                            file_writer.writerow(line)
+
                         int_lines += 1
 
                     except StopIteration:
@@ -81,12 +101,28 @@ def split_file(input_name, output_folder=None,
     print('Read', str(int_lines_total), 'total lines.\n'+\
           str(int_files), 'files after splitting.')
 
+def get_file_delimiter(input_name):
+    '''
+    Returns character delimiter from file.
+    '''
+    with open(input_name, 'rt', encoding='utf8') as input_file:
+        file_reader = reader(input_file)
+        header = str(next(file_reader))
+
+    for i in ['|', '\\t', ';', ',']:
+        if i in header: # \\t != \t
+            print('Delimiter set as "' + i + '".')
+            return i.replace('\\t', '\t')
+
+    return '\n'
+
 if __name__ == "__main__":
 
     parser = ArgumentParser()
 
     parser.add_argument('input', action='store', help='input file name')
     parser.add_argument('-o', '--output', action='store', help='output folder name')
+    parser.add_argument('--delimiter', action='store', help='column field delimiter')
     parser.add_argument('--lines', action='store', type=int, default=1000, help='number of lines to split (default: 1000)')
     parser.add_argument('--no-header', action='store_false', dest='header', help='do not consider first line as header')
 
@@ -94,5 +130,6 @@ if __name__ == "__main__":
 
     split_file(args.input,
                args.output,
+               args.delimiter,
                args.lines,
                args.header)
